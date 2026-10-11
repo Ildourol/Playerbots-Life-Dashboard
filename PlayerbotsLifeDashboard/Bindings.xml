@@ -1,0 +1,7 @@
+<Bindings>
+    <Binding name="PLAYERBOTS_LIFE_DASHBOARD_TOGGLE" header="PLAYERBOTS_LIFE_DASHBOARD_HEADER" default="CTRL-L">
+        if PlayerbotsLifeDashboard and PlayerbotsLifeDashboard.ToggleWindow then
+            PlayerbotsLifeDashboard:ToggleWindow()
+        end
+    </Binding>
+</Bindings>

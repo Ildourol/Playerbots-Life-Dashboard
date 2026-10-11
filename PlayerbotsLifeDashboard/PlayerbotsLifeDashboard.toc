@@ -1,0 +1,26 @@
+## Interface: 30300
+## Title: |cffffaa00Playerbots Life Dashboard|r
+## Notes: Comprehensive live monitoring and diagnostics dashboard for City Life and PvP Life playerbots.
+## Author: Antigravity / DeepMind
+## Version: 1.0.0
+## SavedVariables: PlayerbotsLifeDashboardDB
+## DefaultState: Enabled
+
+Locales\enUS.lua
+Compat.lua
+Protocol.lua
+Clock.lua
+Permissions.lua
+Store.lua
+Timeline.lua
+UI\Widgets.lua
+UI\Window.lua
+UI\MinimapButton.lua
+UI\Overview.lua
+UI\CityLife.lua
+UI\PvPLife.lua
+UI\Inspector.lua
+UI\Settings.lua
+UI\Diagnostics.lua
+Core.lua
+Bindings.xml
