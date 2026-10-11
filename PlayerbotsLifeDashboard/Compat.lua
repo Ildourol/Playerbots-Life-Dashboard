@@ -3,46 +3,28 @@ LifeDashboard = LifeDashboard or {}
 _G["PlayerbotsLifeDashboard"] = LifeDashboard
 
 -- ─── WoW 3.3.5a (Interface 30300, Build 12340) FrameXML Compatibility Layer ───
--- Polyfills modern convenience methods onto FrameXML userdata metatables
--- so standard UI code never errors on missing retail mixin functions.
+-- Provides safe helper functions without modifying global frame userdata metatables,
+-- preventing execution taint or cross-addon interference.
 
-local function polyfillMetatable(obj)
-    if not obj then return end
-    local meta = getmetatable(obj)
-    local index = meta and meta.__index
-    if type(index) == "table" then
-        if not index.SetSize then
-            rawset(index, "SetSize", function(self, width, height)
-                self:SetWidth(width)
-                self:SetHeight(height)
-            end)
-        end
-        if not index.SetShown then
-            rawset(index, "SetShown", function(self, shown)
-                if shown then
-                    self:Show()
-                else
-                    self:Hide()
-                end
-            end)
-        end
-        if not index.GetSize then
-            rawset(index, "GetSize", function(self)
-                return self:GetWidth(), self:GetHeight()
-            end)
-        end
+local Compat = {}
+LifeDashboard.Compat = Compat
+
+function Compat.SetSize(frame, width, height)
+    if not frame then return end
+    frame:SetWidth(width)
+    frame:SetHeight(height)
+end
+
+function Compat.SetShown(frame, shown)
+    if not frame then return end
+    if shown then
+        frame:Show()
+    else
+        frame:Hide()
     end
 end
 
-pcall(function()
-    local dummyFrame = CreateFrame("Frame")
-    polyfillMetatable(dummyFrame)
-
-    local dummyTex = dummyFrame:CreateTexture()
-    polyfillMetatable(dummyTex)
-
-    local dummyFont = dummyFrame:CreateFontString()
-    polyfillMetatable(dummyFont)
-
-    dummyFrame:Hide()
-end)
+function Compat.GetSize(frame)
+    if not frame then return 0, 0 end
+    return frame:GetWidth(), frame:GetHeight()
+end

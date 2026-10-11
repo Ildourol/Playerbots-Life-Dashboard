@@ -2,10 +2,16 @@ local ADDON_NAME, LifeDashboard = ...
 LifeDashboard = LifeDashboard or {}
 _G["PlayerbotsLifeDashboard"] = LifeDashboard
 
-local CityLife = {}
+local CityLife = {
+    initialized = false,
+    selectedHub = nil,
+}
 LifeDashboard.CityLife = CityLife
 
 function CityLife:Init(parent)
+    if self.initialized then return end
+    self.initialized = true
+
     local pane = CreateFrame("Frame", "PlayerbotsLifeDashboardCityPane", parent)
     pane:SetAllPoints(parent)
     pane:Hide()
@@ -21,6 +27,7 @@ function CityLife:Init(parent)
     local hubTitle = hubPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hubTitle:SetPoint("TOPLEFT", hubPanel, "TOPLEFT", 10, -8)
     hubTitle:SetText("City Life Hubs & Districts")
+    pane.HubTitle = hubTitle
 
     local hubCols = {
         { name = "Hub", width = 110 },
@@ -81,13 +88,15 @@ function CityLife:Init(parent)
     resTable:SetPoint("TOPLEFT", resPanel, "TOPLEFT", 5, -34)
     pane.ResTable = resTable
 
-    -- Listen to store updates
+    -- Keyed listeners (DASH-14)
     LifeDashboard.Store:RegisterListener("ON_ROSTER_UPDATED", function()
         CityLife:UpdateData()
-    end)
+    end, "CITY_LIFE_ROSTER")
     LifeDashboard.Store:RegisterListener("ON_CONNECTED", function()
         CityLife:UpdateData()
-    end)
+    end, "CITY_LIFE_CONNECTED")
+
+    CityLife:UpdateData()
 end
 
 function CityLife:SelectHub(hubName)
@@ -104,6 +113,11 @@ function CityLife:UpdateData()
     if not pane then return end
 
     local hubs = LifeDashboard.Store.cityHubList or {}
+    if #hubs == 0 and pane.HubTitle then
+        pane.HubTitle:SetText("City Life Hubs (Awaiting Server Telemetry)")
+    elseif pane.HubTitle then
+        pane.HubTitle:SetText("City Life Hubs & Districts")
+    end
     pane.HubTable:SetData(hubs)
 
     self:UpdateResidents()
@@ -128,7 +142,14 @@ function CityLife:UpdateResidents()
     end
 
     if pane.ResTitle then
-        local titleStr = sel and ("Active Residents: " .. sel .. " (" .. #filtered .. " bots)") or ("All Active City Residents (" .. #filtered .. " bots)")
+        local titleStr
+        if #filtered == 0 and not LifeDashboard.Store.hasServerCapacity and not LifeDashboard.isMockData then
+            titleStr = "Active Residents (Awaiting Server Telemetry)"
+        elseif sel then
+            titleStr = "Active Residents: " .. sel .. " (" .. #filtered .. " bots)"
+        else
+            titleStr = "All Active City Residents (" .. #filtered .. " bots)"
+        end
         pane.ResTitle:SetText(titleStr)
     end
 

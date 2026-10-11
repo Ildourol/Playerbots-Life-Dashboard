@@ -4,11 +4,15 @@ _G["PlayerbotsLifeDashboard"] = LifeDashboard
 
 local Settings = {
     drawer = nil,
+    initialized = false,
 }
 
 LifeDashboard.Settings = Settings
 
 function Settings:Init(parent)
+    if self.initialized then return end
+    self.initialized = true
+
     local d = CreateFrame("Frame", "PlayerbotsLifeDashboardSettingsDrawer", parent)
     d:SetWidth(360)
     d:SetHeight(parent:GetHeight() - 72)
@@ -36,7 +40,8 @@ function Settings:Init(parent)
 
     local desc = d:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-    desc:SetText("Effective Module Settings & Defaults (Read-Only)")
+    desc:SetText("Module Configuration Defaults (Unverified / Awaiting Server CONFIG)")
+    d.Desc = desc
 
     local searchBox = LifeDashboard.Widgets:CreateSearchBox(d, 336, "Filter configuration keys...", function(text)
         Settings:FilterConfig(text)
@@ -53,10 +58,10 @@ function Settings:Init(parent)
     local cfgTable = LifeDashboard.Widgets:CreateVirtualizedTable(d, 340, d:GetHeight() - 95, 24, cfgCols, function(row, item)
         row.cells[1]:SetText(item.key)
         row.cells[2]:SetText(tostring(item.value))
-        if item.supported then
-            row.cells[3]:SetText("|cff00ff66OK|r")
+        if item.fromServer then
+            row.cells[3]:SetText("|cff00ff66Live|r")
         else
-            row.cells[3]:SetText("|cffff9900Partial|r")
+            row.cells[3]:SetText("|cff888888Default|r")
         end
     end)
     cfgTable:SetPoint("TOPLEFT", searchBox, "BOTTOMLEFT", 0, -6)
@@ -67,25 +72,36 @@ end
 
 function Settings:PopulateDefaults()
     local defaults = {
-        { key = "CityLife.Enable", value = "1", supported = true },
-        { key = "CityLife.Population.BorrowPercent", value = "10%", supported = true },
-        { key = "CityLife.Population.FixedCount", value = "100", supported = true },
-        { key = "CityLife.Population.MaxTotal", value = "120", supported = true },
-        { key = "CityLife.Population.Distribution", value = "scaled", supported = true },
-        { key = "CityLife.Time.Enable", value = "1", supported = true },
-        { key = "CityLife.Behaviour.Relocate", value = "1", supported = true },
-        { key = "CityLife.Activities.AFK.Enable", value = "1", supported = true },
-        { key = "CityLife.Duels.AllowPlayerChallenge", value = "1", supported = true },
-        { key = "PvPLife.Enable", value = "1", supported = true },
-        { key = "PvPLife.Events.MaxActive", value = "4", supported = true },
-        { key = "PvPLife.Population.BorrowPercent", value = "10%", supported = true },
-        { key = "PvPLife.Population.FixedCount", value = "100", supported = true },
-        { key = "PvPLife.Duel.PairLimit", value = "12", supported = true },
-        { key = "PvPLife.Movement.UseMovePoint", value = "1", supported = true },
-        { key = "PvPLife.ReactiveRaidResponse.Enable", value = "1", supported = true },
-        { key = "PvPLife.ReactiveRaidResponse.LoginOfflineBots", value = "0", supported = true },
-        { key = "PvPLife.Audit.Enable", value = "1", supported = true },
+        { key = "CityLife.Enable", value = "1", fromServer = false },
+        { key = "CityLife.Population.BorrowPercent", value = "10%", fromServer = false },
+        { key = "CityLife.Population.FixedCount", value = "100", fromServer = false },
+        { key = "CityLife.Population.MaxTotal", value = "120", fromServer = false },
+        { key = "CityLife.Population.Distribution", value = "scaled", fromServer = false },
+        { key = "CityLife.Time.Enable", value = "1", fromServer = false },
+        { key = "CityLife.Behaviour.Relocate", value = "1", fromServer = false },
+        { key = "CityLife.Activities.AFK.Enable", value = "1", fromServer = false },
+        { key = "CityLife.Duels.AllowPlayerChallenge", value = "1", fromServer = false },
+        { key = "PvPLife.Enable", value = "1", fromServer = false },
+        { key = "PvPLife.Events.MaxActive", value = "4", fromServer = false },
+        { key = "PvPLife.Population.BorrowPercent", value = "10%", fromServer = false },
+        { key = "PvPLife.Population.FixedCount", value = "100", fromServer = false },
+        { key = "PvPLife.Duel.PairLimit", value = "12", fromServer = false },
+        { key = "PvPLife.Movement.UseMovePoint", value = "1", fromServer = false },
+        { key = "PvPLife.ReactiveRaidResponse.Enable", value = "1", fromServer = false },
+        { key = "PvPLife.ReactiveRaidResponse.LoginOfflineBots", value = "0", fromServer = false },
+        { key = "PvPLife.Audit.Enable", value = "1", fromServer = false },
     }
+
+    -- If server has transmitted CONFIG items, overlay them as authoritative
+    if LifeDashboard.Store and LifeDashboard.Store.config then
+        for _, item in ipairs(defaults) do
+            if LifeDashboard.Store.config[item.key] ~= nil then
+                item.value = LifeDashboard.Store.config[item.key]
+                item.fromServer = true
+            end
+        end
+    end
+
     self.configList = defaults
     if self.drawer and self.drawer.Table then
         self.drawer.Table:SetData(defaults)

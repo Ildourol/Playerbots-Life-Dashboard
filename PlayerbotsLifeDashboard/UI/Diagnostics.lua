@@ -4,11 +4,15 @@ _G["PlayerbotsLifeDashboard"] = LifeDashboard
 
 local Diagnostics = {
     drawer = nil,
+    initialized = false,
 }
 
 LifeDashboard.Diagnostics = Diagnostics
 
 function Diagnostics:Init(parent)
+    if self.initialized then return end
+    self.initialized = true
+
     local d = CreateFrame("Frame", "PlayerbotsLifeDashboardDiagnosticsDrawer", parent)
     d:SetWidth(340)
     d:SetHeight(parent:GetHeight() - 72)
@@ -69,7 +73,7 @@ function Diagnostics:Init(parent)
     testBtn:SetScript("OnClick", function()
         if LifeDashboard.Store and LifeDashboard.Store.InjectMockData then
             LifeDashboard.Store:InjectMockData()
-            DEFAULT_CHAT_FRAME:AddMessage("|cff00ff66[LifeDashboard]|r Injected realistic mock telemetry dataset.")
+            DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00[LifeDashboard]|r Injected mock demonstration dataset [DEMO MODE].")
         end
     end)
 
@@ -80,10 +84,8 @@ function Diagnostics:Init(parent)
     rstBtn:SetText("Reset State")
     rstBtn:SetScript("OnClick", function()
         if LifeDashboard.Store then
-            LifeDashboard.Store.bots = {}
-            LifeDashboard.Store.botList = {}
-            LifeDashboard.Store:RebuildBotList()
-            LifeDashboard.Store:Notify("ON_ROSTER_UPDATED")
+            LifeDashboard.Store:InitWorld()
+            DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00[LifeDashboard]|r Roster and world cache reset to clean empty state.")
         end
     end)
 
@@ -106,6 +108,19 @@ function Diagnostics:UpdateMetrics()
     local buffers = 0
     for _ in pairs(LifeDashboard.Protocol and LifeDashboard.Protocol.buffers or {}) do buffers = buffers + 1 end
 
+    local statusStr
+    if LifeDashboard.isMockData then
+        statusStr = "|cffffcc00[DEMO MODE: Mock Telemetry]|r"
+    elseif LifeDashboard.connected then
+        statusStr = string.format("|cff00ff66Connected|r (State: %s)", LifeDashboard.connectionState or "CONNECTED")
+    elseif LifeDashboard.connectionState == "HELLO_SENT" then
+        statusStr = "|cff00ccffConnecting...|r (Handshake Sent)"
+    elseif LifeDashboard.connectionState == "STALE" then
+        statusStr = "|cffff9900Degraded|r (Missed Heartbeat)"
+    else
+        statusStr = "|cff888888Disconnected|r (Local Observations Only)"
+    end
+
     local text = string.format(
         "|cffffaa00Wire Transport Metrics|r\n" ..
         "------------------------------------\n" ..
@@ -117,11 +132,11 @@ function Diagnostics:UpdateMetrics()
         "|cffffaa00Client Memory & Performance|r\n" ..
         "------------------------------------\n" ..
         "Addon Memory Usage: %.1f KB\n" ..
-        "Cached Bots in Roster: %d\n" ..
+        "Known Entities: %d\n" ..
         "Active City Hubs: %d\n" ..
         "Active PvP Hotspots: %d\n" ..
         "Queued Server Tasks: %d",
-        LifeDashboard.connected and "|cff00ff66Connected|r" or "|cff888888Disconnected|r",
+        statusStr,
         rtt,
         buffers,
         LifeDashboard.sessionEpoch or "None",

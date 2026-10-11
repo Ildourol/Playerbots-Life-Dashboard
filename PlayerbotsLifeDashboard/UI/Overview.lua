@@ -2,7 +2,9 @@ local ADDON_NAME, LifeDashboard = ...
 LifeDashboard = LifeDashboard or {}
 _G["PlayerbotsLifeDashboard"] = LifeDashboard
 
-local Overview = {}
+local Overview = {
+    initialized = false,
+}
 LifeDashboard.Overview = Overview
 
 local CLASS_COLORS = {
@@ -19,6 +21,9 @@ local CLASS_COLORS = {
 }
 
 function Overview:Init(parent)
+    if self.initialized then return end
+    self.initialized = true
+
     local pane = CreateFrame("Frame", "PlayerbotsLifeDashboardOverviewPane", parent)
     pane:SetAllPoints(parent)
     LifeDashboard.OverviewPane = pane
@@ -134,7 +139,17 @@ function Overview:Init(parent)
         local cColor = CLASS_COLORS[item.classId] or "ffffff"
         local isWatched = LifeDashboard.Store and LifeDashboard.Store:IsWatchlisted(item.guid)
         local watchPrefix = isWatched and "|cffffd700★ |r" or ""
-        local tag = item.isRealPlayer and "|cffffcc00[P]|r " or "|cff00ff66[B]|r "
+
+        -- DASH-06: Accurate entity badge
+        local tag
+        if item.truthSource == "server-authoritative" or item.isBot then
+            tag = "|cff00ff66[B]|r "
+        elseif item.isRealPlayer == true then
+            tag = "|cffffcc00[P]|r "
+        else
+            tag = "|cffaaaaaa[O]|r "
+        end
+
         row.cells[1]:SetText(string.format("%s%s|cff%s%s|r", watchPrefix, tag, cColor, item.name))
 
         if item.module == "city" then
@@ -165,22 +180,48 @@ function Overview:Init(parent)
     tableFrame:SetPoint("TOPLEFT", filterBar, "BOTTOMLEFT", 0, -8)
     pane.Table = tableFrame
 
-    -- Listen to store updates
+    -- Keyed listeners for safe lifecycle (DASH-14)
     LifeDashboard.Store:RegisterListener("ON_CAPACITY_UPDATED", function(cap)
         Overview:UpdateCards(cap)
-    end)
+    end, "OVERVIEW_CAPACITY")
+
     LifeDashboard.Store:RegisterListener("ON_ROSTER_UPDATED", function()
         Overview:ApplyFilters()
-    end)
+    end, "OVERVIEW_ROSTER")
+
+    Overview:UpdateCards(LifeDashboard.Store.capacity)
 end
 
 function Overview:UpdateCards(cap)
     local pane = LifeDashboard.OverviewPane
     if not pane then return end
-    pane.CardTotal.Value:SetText(tostring(cap.total))
-    pane.CardCity.Value:SetText(string.format("%d / %d", cap.cityActive, cap.cityTarget))
-    pane.CardPvP.Value:SetText(string.format("%d / %d", cap.pvpActive, cap.pvpTarget))
-    pane.CardFree.Value:SetText(tostring(cap.free))
+
+    if LifeDashboard.Store and LifeDashboard.Store.hasServerCapacity then
+        pane.CardTotal.Value:SetText(tostring(cap.total))
+        pane.CardTotal.Subtext:SetText(LifeDashboard.isMockData and "|cffffcc00Mock Telemetry|r" or "|cff00ff66Live Server|r")
+
+        pane.CardCity.Value:SetText(string.format("%d / %d", cap.cityActive, cap.cityTarget))
+        pane.CardCity.Subtext:SetText(string.format("%d active", cap.cityActive))
+
+        pane.CardPvP.Value:SetText(string.format("%d / %d", cap.pvpActive, cap.pvpTarget))
+        pane.CardPvP.Subtext:SetText(string.format("%d active", cap.pvpActive))
+
+        pane.CardFree.Value:SetText(tostring(cap.free))
+        pane.CardFree.Subtext:SetText("Available pool")
+    else
+        -- DASH-01: Honest placeholder when server telemetry has not arrived
+        pane.CardTotal.Value:SetText("--")
+        pane.CardTotal.Subtext:SetText("|cff888888Awaiting Telemetry|r")
+
+        pane.CardCity.Value:SetText("-- / --")
+        pane.CardCity.Subtext:SetText("|cff888888Awaiting Bridge|r")
+
+        pane.CardPvP.Value:SetText("-- / --")
+        pane.CardPvP.Subtext:SetText("|cff888888Awaiting Bridge|r")
+
+        pane.CardFree.Value:SetText("--")
+        pane.CardFree.Subtext:SetText("|cff888888Awaiting Bridge|r")
+    end
 end
 
 function Overview:ApplyFilters()
@@ -196,20 +237,20 @@ function Overview:ApplyFilters()
         if modFilter == "ALL" then
             matchesMod = true
         elseif modFilter == "BOTS" then
-            matchesMod = not bot.isRealPlayer
+            matchesMod = (bot.truthSource == "server-authoritative" or bot.isBot == true or bot.truthSource == "demo")
         elseif modFilter == "PLAYERS" then
             matchesMod = (bot.isRealPlayer == true)
         elseif modFilter == "WATCHLIST" then
             matchesMod = LifeDashboard.Store:IsWatchlisted(bot.guid)
         elseif modFilter == "city" then
-            matchesMod = (bot.module == "city" and not bot.isRealPlayer)
+            matchesMod = (bot.module == "city")
         elseif modFilter == "pvp" then
-            matchesMod = (bot.module == "pvp" and not bot.isRealPlayer)
+            matchesMod = (bot.module == "pvp")
         end
 
         local matchesSearch = true
         if search ~= "" then
-            matchesSearch = string.find(string.lower(bot.name), search, 1, true) or
+            matchesSearch = string.find(string.lower(bot.name or ""), search, 1, true) or
                             (bot.location and string.find(string.lower(bot.location), search, 1, true)) or
                             (bot.activity and string.find(string.lower(bot.activity), search, 1, true)) or
                             (bot.role and string.find(string.lower(bot.role), search, 1, true))

@@ -7,12 +7,14 @@ local Window = {
     tabs = {},
     activeTabId = 1,
     activeDrawer = nil,
+    initialized = false,
 }
 
 LifeDashboard.Window = Window
 
 function Window:Init()
-    if self.frame then return end
+    if self.initialized and self.frame then return end
+    self.initialized = true
 
     local f = CreateFrame("Frame", "PlayerbotsLifeDashboardMainFrame", UIParent)
     f:SetWidth(1020)
@@ -157,14 +159,20 @@ function Window:Init()
 end
 
 function Window:UpdateHeaderStatus()
-    if not self.frame then return end
-    if LifeDashboard.connected then
+    if not self.frame or not self.frame.StatusBadge then return end
+
+    if LifeDashboard.isMockData then
+        self.frame.StatusBadge:SetText("|cffffcc00[DEMO MODE: Mock Telemetry]|r")
+    elseif LifeDashboard.connected then
         local rtt = LifeDashboard.Clock and LifeDashboard.Clock.rttMs or 0
         local connStr = LifeDashboard.L and LifeDashboard.L.STATUS_CONNECTED or "Connected"
         self.frame.StatusBadge:SetText(string.format("|cff00ff66[%s: %dms]|r", connStr, rtt))
+    elseif LifeDashboard.connectionState == "HELLO_SENT" then
+        self.frame.StatusBadge:SetText("|cff00ccff[Connecting...]|r")
+    elseif LifeDashboard.connectionState == "STALE" then
+        self.frame.StatusBadge:SetText("|cffff9900[Degraded (Stale Heartbeat)]|r")
     else
-        local discStr = LifeDashboard.L and LifeDashboard.L.STATUS_DISCONNECTED or "Disconnected"
-        self.frame.StatusBadge:SetText("|cff888888[" .. discStr .. "]|r")
+        self.frame.StatusBadge:SetText("|cff888888[Disconnected: Local Observations Only]|r")
     end
 end
 

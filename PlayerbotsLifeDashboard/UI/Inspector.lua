@@ -5,11 +5,17 @@ _G["PlayerbotsLifeDashboard"] = LifeDashboard
 local Inspector = {
     drawer = nil,
     currentGuid = nil,
+    appliedTargetBotName = nil,
+    pendingTargetBotName = nil,
+    initialized = false,
 }
 
 LifeDashboard.Inspector = Inspector
 
 function Inspector:Init(parent)
+    if self.initialized then return end
+    self.initialized = true
+
     local d = CreateFrame("Frame", "PlayerbotsLifeDashboardInspectorDrawer", parent)
     d:SetWidth(340)
     d:SetHeight(parent:GetHeight() - 72)
@@ -84,7 +90,7 @@ function Inspector:Init(parent)
     local stratDetails = stratBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     stratDetails:SetPoint("TOPLEFT", stratTitle, "BOTTOMLEFT", 0, -4)
     stratDetails:SetJustifyH("LEFT")
-    stratDetails:SetText("NonCombat: +stay,-follow,-grind,-rpg\nCombat: +pvp,+boost,+dps debuff")
+    stratDetails:SetText("Strategies: Not reported by server.")
     d.StratDetails = stratDetails
 
     -- Accordion Section 3: Timeline & Work Chronology
@@ -123,7 +129,11 @@ function Inspector:Init(parent)
     targetBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Target Bot", 1, 1, 1)
-        GameTooltip:AddLine("Executes secure /target command for this bot in the 3D world.", 0.8, 0.8, 0.8)
+        if InCombatLockdown() then
+            GameTooltip:AddLine("|cffff9900Target macro locked during combat.|r", 1, 0.8, 0)
+        else
+            GameTooltip:AddLine("Executes secure /target command for this bot in the 3D world.", 0.8, 0.8, 0.8)
+        end
         GameTooltip:Show()
     end)
     targetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -137,7 +147,8 @@ function Inspector:Init(parent)
     findBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Find / Coordinates", 1, 1, 1)
-        GameTooltip:AddLine("Prints bot location and coordinates to chat, and sets a map waypoint.", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Prints bot location and coordinates to chat.", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Sets a TomTom waypoint if map percentage (0-100%) coords are available.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
     findBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -148,86 +159,78 @@ function Inspector:Init(parent)
 
         local c = bot.coords
         if c and c.x and c.y then
-            local msg = string.format("|cff33ccff[Life Dashboard]|r %s is at |cffffd000%s|r (X: %.1f, Y: %.1f, Z: %.1f)", bot.name, c.zone or bot.location or "World", c.x, c.y, c.z or 0)
+            local msg = string.format("|cff33ccff[Life Dashboard]|r %s is at |cffffd000%s|r (World XYZ: %.1f, %.1f, %.1f)",
+                bot.name, c.zone or bot.location or "World", c.x, c.y, c.z or 0)
             DEFAULT_CHAT_FRAME:AddMessage(msg)
 
+            -- DASH-09: TomTom /way only accepts map percentages (0..100). Do NOT pass world XYZ!
             if SlashCmdList and SlashCmdList["TOMTOM_WAY"] then
-                SlashCmdList["TOMTOM_WAY"](string.format("%.1f %.1f %s (%s)", c.x, c.y, bot.name, bot.location or ""))
+                if c.mapX and c.mapY and c.mapX >= 0 and c.mapX <= 100 and c.mapY >= 0 and c.mapY <= 100 then
+                    SlashCmdList["TOMTOM_WAY"](string.format("%.1f %.1f %s (%s)", c.mapX, c.mapY, bot.name, bot.location or ""))
+                else
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffff9900[Life Dashboard]|r TomTom waypoint skipped (coordinates are world XYZ, not map percentage).")
+                end
             end
         else
-            local msg = string.format("|cff33ccff[Life Dashboard]|r %s is located in |cffffd000%s|r [Activity: %s]", bot.name, bot.location or "World", bot.activity or "Active")
+            local msg = string.format("|cff33ccff[Life Dashboard]|r %s is located in |cffffd000%s|r [Activity: %s, Coords: Not reported]",
+                bot.name, bot.location or "World", bot.activity or "Active")
             DEFAULT_CHAT_FRAME:AddMessage(msg)
         end
     end)
     d.FindBtn = findBtn
 
     local pinBtn = CreateFrame("Button", nil, actionBar, "UIPanelButtonTemplate")
-    pinBtn:SetWidth(104)
+    pinBtn:SetWidth(95)
     pinBtn:SetHeight(22)
     pinBtn:SetPoint("LEFT", findBtn, "RIGHT", 6, 0)
     pinBtn:SetText("Pin ★")
-    pinBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Pin to Watchlist", 1, 1, 1)
-        GameTooltip:AddLine("Toggles priority pinning so this bot stays at the top of your lists.", 0.8, 0.8, 0.8)
-        GameTooltip:Show()
-    end)
-    pinBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     pinBtn:SetScript("OnClick", function()
         local guid = Inspector.currentGuid
-        if not guid then return end
-        local isWatched = LifeDashboard.Store:ToggleWatchlist(guid)
-        local bot = LifeDashboard.Store.bots and LifeDashboard.Store.bots[guid]
-        local botName = bot and bot.name or "Bot"
-
-        if isWatched then
-            pinBtn:SetText("|cffffd700★ Pinned|r")
-            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cff33ccff[Life Dashboard]|r Added |cffffd000%s|r to Watchlist.", botName))
-        else
-            pinBtn:SetText("Pin ★")
-            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cff33ccff[Life Dashboard]|r Removed |cffffd000%s|r from Watchlist.", botName))
-        end
-
-        if LifeDashboard.Overview and LifeDashboard.Overview.ApplyFilters then
-            LifeDashboard.Overview:ApplyFilters()
-        end
-        if LifeDashboard.CityLife and LifeDashboard.CityLife.UpdateResidents then
-            LifeDashboard.CityLife:UpdateResidents()
-        end
-        if LifeDashboard.PvPLife and LifeDashboard.PvPLife.UpdateParticipants then
-            LifeDashboard.PvPLife:UpdateParticipants()
+        if guid and LifeDashboard.Store then
+            local isPinned = LifeDashboard.Store:ToggleWatchlist(guid)
+            pinBtn:SetText(isPinned and "|cffffd700★ Pinned|r" or "Pin ★")
+            if Inspector.drawer and Inspector.drawer:IsShown() then
+                Inspector:DisplayBot(guid)
+            end
         end
     end)
     d.PinBtn = pinBtn
 
-    -- Row 2: Whisper Bot, Quick Hint
+    -- Row 2: Whisper Bot
     local whisperBtn = CreateFrame("Button", nil, actionBar, "UIPanelButtonTemplate")
-    whisperBtn:SetWidth(120)
+    whisperBtn:SetWidth(150)
     whisperBtn:SetHeight(22)
-    whisperBtn:SetPoint("BOTTOMLEFT", actionBar, "BOTTOMLEFT", 0, 2)
+    whisperBtn:SetPoint("BOTTOMLEFT", actionBar, "BOTTOMLEFT", 0, 0)
     whisperBtn:SetText("Whisper Bot")
-    whisperBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Whisper Bot", 1, 1, 1)
-        GameTooltip:AddLine("Opens chat prompt to whisper commands or chat with this bot.", 0.8, 0.8, 0.8)
-        GameTooltip:Show()
-    end)
-    whisperBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     whisperBtn:SetScript("OnClick", function()
         local guid = Inspector.currentGuid
         local bot = LifeDashboard.Store and LifeDashboard.Store.bots and LifeDashboard.Store.bots[guid]
-        if not bot then return end
-
-        if ChatFrame_OpenChat then
+        if bot and bot.name then
             ChatFrame_OpenChat("/w " .. bot.name .. " ")
         end
     end)
     d.WhisperBtn = whisperBtn
 
     local hintFs = actionBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hintFs:SetPoint("LEFT", whisperBtn, "RIGHT", 10, 0)
-    hintFs:SetText("Target or monitor bot")
+    hintFs:SetPoint("LEFT", whisperBtn, "RIGHT", 8, 0)
+    hintFs:SetText("Target uses secure action.")
     d.HintFs = hintFs
+end
+
+function Inspector:OnLeaveCombat()
+    if not self.drawer then return end
+    if self.pendingTargetBotName and not InCombatLockdown() then
+        if self.pendingTargetBotName ~= "" then
+            self.drawer.TargetBtn:SetAttribute("macrotext", "/target " .. self.pendingTargetBotName)
+            self.drawer.TargetBtn:Enable()
+            self.drawer.TargetBtn:SetText("Target")
+            self.appliedTargetBotName = self.pendingTargetBotName
+        else
+            self.drawer.TargetBtn:SetAttribute("macrotext", "")
+            self.appliedTargetBotName = nil
+        end
+        self.pendingTargetBotName = nil
+    end
 end
 
 function Inspector:DisplayBot(guid)
@@ -241,58 +244,96 @@ function Inspector:DisplayBot(guid)
         d.InfoText:SetText("Click a bot in the roster to inspect details.")
         d.CoordText:SetText("Location: None")
         d.LeaseDetails:SetText("Lease State: None\nModule Owner: None\nReservation Expiry: N/A")
-        d.StratDetails:SetText("NonCombat: Default AI\nCombat: Default AI")
+        d.StratDetails:SetText("Strategies: None")
         d.TimelineDetails:SetText("No queued or observed tasks recorded.")
         d.PinBtn:SetText("Pin ★")
+
         if not InCombatLockdown() then
             d.TargetBtn:SetAttribute("macrotext", "")
+            self.appliedTargetBotName = nil
+            self.pendingTargetBotName = nil
+        else
+            self.pendingTargetBotName = ""
         end
         return
     end
 
     local isWatched = LifeDashboard.Store:IsWatchlisted(guid)
     local star = isWatched and "|cffffd700★ |r" or ""
-    local typeBadge = bot.isRealPlayer and "|cffffcc00[Player]|r " or "|cff00ff66[Bot]|r "
+
+    -- DASH-06: Accurate entity type badge
+    local typeBadge
+    if bot.truthSource == "server-authoritative" or bot.isBot then
+        typeBadge = "|cff00ff66[Bot]|r "
+    elseif bot.isRealPlayer == true then
+        typeBadge = "|cffffcc00[Player]|r "
+    else
+        typeBadge = "|cffaaaaaa[Observed]|r "
+    end
+
     d.NameText:SetText(star .. typeBadge .. bot.name)
 
     d.InfoText:SetText(string.format("Level %d %s | %s | %s",
         bot.level or 80,
         string.upper(bot.faction or "ALLIANCE"),
-        string.upper(bot.module or "CITY"),
+        string.upper(bot.module or "WORLD"),
         bot.status or "Active"))
 
+    -- DASH-07: Display coords only if reported
     local c = bot.coords
     if c and c.x and c.y then
         d.CoordText:SetText(string.format("|cff33ccffLocation:|r %s\n|cffaaaaaaCoords:|r X: %.1f, Y: %.1f, Z: %.1f",
             bot.location or c.zone or "World", c.x, c.y, c.z or 0))
     else
-        d.CoordText:SetText(string.format("|cff33ccffLocation:|r %s", bot.location or "Unknown Zone"))
+        d.CoordText:SetText(string.format("|cff33ccffLocation:|r %s\n|cff888888Coords: Not reported by server|r",
+            bot.location or "Unknown Zone"))
     end
 
-    d.LeaseDetails:SetText(string.format("Module Owner: %s Life\nRole: %s\nActivity: %s\nStatus: %s (%.1fs ago)",
-        string.upper(bot.module or "city"),
+    d.LeaseDetails:SetText(string.format("Module Owner: %s\nRole: %s\nActivity: %s\nStatus: %s (%.1fs ago)",
+        bot.module == "world" and "World Observation" or (string.upper(bot.module or "Unknown") .. " Life"),
         bot.role or "Autonomous Actor",
         bot.activity or "None",
         bot.status or "Active",
         GetTime() - (bot.updatedAt or GetTime())))
 
-    -- AI Strategies
+    -- DASH-07: Transparent AI Strategies
     local stratText
-    if bot.module == "city" then
-        stratText = string.format("Role: %s\nNonCombat: +stay,+rpg,-follow\nCombat: +duel,+defend", bot.role or "Flex")
-    elseif bot.module == "pvp" then
-        stratText = string.format("Zone: %s\nCombat: +pvp,+boost,+dps\nNonCombat: +stay,-grind", bot.zone or "PvP Zone")
+    if bot.truthSource == "server-authoritative" then
+        if bot.strategies then
+            stratText = bot.strategies
+        else
+            stratText = "Strategies: Managed by server PlayerbotAI.\n(Roster telemetry does not report raw strategy string)"
+        end
+    elseif bot.truthSource == "demo" then
+        if bot.module == "city" then
+            stratText = string.format("Role: %s (Mock Demonstration)\nNonCombat: +stay,+rpg,-follow\nCombat: +duel,+defend", bot.role or "Flex")
+        else
+            stratText = string.format("Zone: %s (Mock Demonstration)\nCombat: +pvp,+boost,+dps\nNonCombat: +stay,-grind", bot.zone or "PvP Zone")
+        end
     else
-        stratText = "Player entity: Natural human control."
+        stratText = "Observed Entity: Server strategies not available."
     end
     d.StratDetails:SetText(stratText)
 
     -- Pin button text
     d.PinBtn:SetText(isWatched and "|cffffd700★ Pinned|r" or "Pin ★")
 
-    -- Target button macro
-    if not InCombatLockdown() then
-        d.TargetBtn:SetAttribute("macrotext", "/target " .. bot.name)
+    -- DASH-08: Secure Target macro combat handling
+    local safeName = string.match(bot.name, "^([%w%s%-_]+)$")
+    if safeName then
+        if not InCombatLockdown() then
+            d.TargetBtn:SetAttribute("macrotext", "/target " .. safeName)
+            d.TargetBtn:Enable()
+            d.TargetBtn:SetText("Target")
+            self.appliedTargetBotName = safeName
+            self.pendingTargetBotName = nil
+        else
+            self.pendingTargetBotName = safeName
+            if self.appliedTargetBotName ~= safeName then
+                d.TargetBtn:Disable()
+                d.TargetBtn:SetText("|cffff9900Locked (Combat)|r")
+            end
+        end
     end
 
     -- Rebuild Timeline Text

@@ -2,10 +2,16 @@ local ADDON_NAME, LifeDashboard = ...
 LifeDashboard = LifeDashboard or {}
 _G["PlayerbotsLifeDashboard"] = LifeDashboard
 
-local PvPLife = {}
+local PvPLife = {
+    initialized = false,
+    selectedZone = nil,
+}
 LifeDashboard.PvPLife = PvPLife
 
 function PvPLife:Init(parent)
+    if self.initialized then return end
+    self.initialized = true
+
     local pane = CreateFrame("Frame", "PlayerbotsLifeDashboardPvPPane", parent)
     pane:SetAllPoints(parent)
     pane:Hide()
@@ -21,6 +27,7 @@ function PvPLife:Init(parent)
     local zoneTitle = zonePanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     zoneTitle:SetPoint("TOPLEFT", zonePanel, "TOPLEFT", 10, -8)
     zoneTitle:SetText("PvP Life Hotspots & Skirmishes")
+    pane.ZoneTitle = zoneTitle
 
     local zoneCols = {
         { name = "Zone", width = 130 },
@@ -59,6 +66,7 @@ function PvPLife:Init(parent)
     local queueTitle = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     queueTitle:SetPoint("TOPLEFT", queuePanel, "TOPLEFT", 10, -8)
     queueTitle:SetText("Server Work Queues (Move, Engage, Duel, Chat)")
+    pane.QueueTitle = queueTitle
 
     local queueCols = {
         { name = "Queue", width = 80 },
@@ -121,13 +129,15 @@ function PvPLife:Init(parent)
     partTable:SetPoint("TOPLEFT", partPanel, "TOPLEFT", 5, -34)
     pane.PartTable = partTable
 
-    -- Listen to store updates
+    -- Keyed listeners for clean lifecycle (DASH-14)
     LifeDashboard.Store:RegisterListener("ON_ROSTER_UPDATED", function()
         PvPLife:UpdateData()
-    end)
+    end, "PVP_LIFE_ROSTER")
     LifeDashboard.Store:RegisterListener("ON_CONNECTED", function()
         PvPLife:UpdateData()
-    end)
+    end, "PVP_LIFE_CONNECTED")
+
+    PvPLife:UpdateData()
 end
 
 function PvPLife:SelectZone(zoneName)
@@ -144,9 +154,19 @@ function PvPLife:UpdateData()
     if not pane then return end
 
     local zones = LifeDashboard.Store.pvpZoneList or {}
+    if #zones == 0 and pane.ZoneTitle then
+        pane.ZoneTitle:SetText("PvP Hotspots (Awaiting Server Telemetry)")
+    elseif pane.ZoneTitle then
+        pane.ZoneTitle:SetText("PvP Life Hotspots & Skirmishes")
+    end
     pane.ZoneTable:SetData(zones)
 
     local queues = LifeDashboard.Store.workQueues or {}
+    if #queues == 0 and pane.QueueTitle then
+        pane.QueueTitle:SetText("Server Work Queues (Awaiting Telemetry)")
+    elseif pane.QueueTitle then
+        pane.QueueTitle:SetText("Server Work Queues (Move, Engage, Duel, Chat)")
+    end
     pane.QueueTable:SetData(queues)
 
     self:UpdateParticipants()
@@ -179,7 +199,9 @@ function PvPLife:UpdateParticipants()
     pane.PartTable:SetData(filtered)
 
     if pane.PartTitle then
-        if sel then
+        if #filtered == 0 and not LifeDashboard.Store.hasServerCapacity and not LifeDashboard.isMockData then
+            pane.PartTitle:SetText("Zone Participants (Awaiting Server Telemetry)")
+        elseif sel then
             pane.PartTitle:SetText(string.format("Zone Participants: %s (%d bots)", sel, #filtered))
         else
             pane.PartTitle:SetText(string.format("Zone Participants: All Zones (%d bots)", #filtered))

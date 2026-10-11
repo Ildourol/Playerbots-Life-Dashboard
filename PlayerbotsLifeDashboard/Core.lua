@@ -5,6 +5,13 @@ _G["PlayerbotsLifeDashboard"] = LifeDashboard
 local Core = CreateFrame("Frame", "PlayerbotsLifeDashboardEventFrame")
 LifeDashboard.Core = Core
 
+LifeDashboard.connected = false
+LifeDashboard.connectionState = "DISCONNECTED"
+LifeDashboard.sessionEpoch = nil
+LifeDashboard.lastPacketTime = 0
+LifeDashboard.inCombat = false
+LifeDashboard.uiInitialized = false
+
 -- ─── Event Handlers ──────────────────────────────────────────────────────────
 Core:RegisterEvent("ADDON_LOADED")
 Core:RegisterEvent("PLAYER_LOGIN")
@@ -31,6 +38,9 @@ Core:SetScript("OnEvent", function(self, event, ...)
         LifeDashboard:OnPlayerLogin()
 
     elseif event == "PLAYER_ENTERING_WORLD" then
+        if LifeDashboard.Protocol then
+            LifeDashboard.Protocol:ResetBuffers()
+        end
         if LifeDashboard.Store then
             LifeDashboard.Store:InitWorld()
             LifeDashboard.Store:ScanNearbyWorld()
@@ -38,18 +48,30 @@ Core:SetScript("OnEvent", function(self, event, ...)
         if LifeDashboard.MinimapButton then
             LifeDashboard.MinimapButton:Init()
         end
-        if LifeDashboard.Protocol and not LifeDashboard.connected then
-            LifeDashboard.Protocol:SendMessage("HELLO", "main", nil, "v=1.0.0;build=12340")
+        if not LifeDashboard.connected then
+            LifeDashboard.connectionState = "HELLO_SENT"
+            if LifeDashboard.Protocol then
+                LifeDashboard.Protocol:SendMessage("HELLO", "main", nil, "v=1.0.0;build=12340")
+            end
+        end
+        if LifeDashboard.Window and LifeDashboard.Window.UpdateHeaderStatus then
+            LifeDashboard.Window:UpdateHeaderStatus()
         end
 
     elseif event == "PLAYER_TARGET_CHANGED" then
         if LifeDashboard.Store and UnitExists("target") and UnitIsPlayer("target") then
-            LifeDashboard.Store:ScanUnit("target")
+            if LifeDashboard.Store:ScanUnit("target") then
+                LifeDashboard.Store:RebuildBotList()
+                LifeDashboard.Store:Notify("ON_ROSTER_UPDATED")
+            end
         end
 
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         if LifeDashboard.Store and UnitExists("mouseover") and UnitIsPlayer("mouseover") then
-            LifeDashboard.Store:ScanUnit("mouseover")
+            if LifeDashboard.Store:ScanUnit("mouseover") then
+                LifeDashboard.Store:RebuildBotList()
+                LifeDashboard.Store:Notify("ON_ROSTER_UPDATED")
+            end
         end
 
     elseif event == "ZONE_CHANGED_NEW_AREA" or event == "ZONE_CHANGED" then
@@ -76,20 +98,26 @@ Core:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         LifeDashboard.inCombat = false
+        -- Atomically resolve pending secure target updates deferred during combat (DASH-08)
+        if LifeDashboard.Inspector and LifeDashboard.Inspector.OnLeaveCombat then
+            LifeDashboard.Inspector:OnLeaveCombat()
+        end
     end
 end)
 
--- ─── Periodic Ticker ─────────────────────────────────────────────────────────
+-- ─── Periodic Ticker (DASH-11 & DASH-12) ─────────────────────────────────────
 local elapsedTicker = 0
 local pingTicker = 0
 local handshakeTicker = 0
 local worldScanTicker = 0
+local pruneTicker = 0
 
 Core:SetScript("OnUpdate", function(self, elapsed)
     elapsedTicker = elapsedTicker + elapsed
     pingTicker = pingTicker + elapsed
     handshakeTicker = handshakeTicker + elapsed
     worldScanTicker = worldScanTicker + elapsed
+    pruneTicker = pruneTicker + elapsed
 
     -- Buffer pruning every 2s
     if elapsedTicker >= 2.0 then
@@ -99,7 +127,7 @@ Core:SetScript("OnUpdate", function(self, elapsed)
         end
     end
 
-    -- Periodic world scan every 1.5s
+    -- Periodic world scan every 1.5s (batched)
     if worldScanTicker >= 1.5 then
         worldScanTicker = 0
         if LifeDashboard.Store then
@@ -107,10 +135,19 @@ Core:SetScript("OnUpdate", function(self, elapsed)
         end
     end
 
-    -- Handshake retry every 5s until connected
-    if not LifeDashboard.connected then
+    -- Prune stale unclassified world entities every 30s (DASH-11)
+    if pruneTicker >= 30.0 then
+        pruneTicker = 0
+        if LifeDashboard.Store then
+            LifeDashboard.Store:PruneStaleObserved(300) -- 5 min TTL
+        end
+    end
+
+    -- Handshake retry every 5s until connected (DASH-12)
+    if not LifeDashboard.connected and not LifeDashboard.isMockData then
         if handshakeTicker >= 5.0 then
             handshakeTicker = 0
+            LifeDashboard.connectionState = "HELLO_SENT"
             if LifeDashboard.Protocol then
                 LifeDashboard.Protocol:SendMessage("HELLO", "main", nil, "v=1.0.0;build=12340")
             end
@@ -119,8 +156,20 @@ Core:SetScript("OnUpdate", function(self, elapsed)
         -- Keepalive ping every 20s once connected
         if pingTicker >= 20.0 then
             pingTicker = 0
-            if LifeDashboard.Protocol then
-                LifeDashboard.Protocol:SendMessage("PING", "main", nil, tostring(math.floor(GetTime() * 1000)))
+            local now = GetTime()
+            -- Heartbeat expiry check: 40s without packet drops connection to STALE
+            if not LifeDashboard.isMockData and (now - (LifeDashboard.lastPacketTime or 0)) > 40.0 then
+                LifeDashboard.connected = false
+                LifeDashboard.connectionState = "STALE"
+                LifeDashboard.sessionEpoch = nil
+                if LifeDashboard.Permissions and LifeDashboard.Permissions.Reset then
+                    LifeDashboard.Permissions:Reset()
+                end
+                if LifeDashboard.Window and LifeDashboard.Window.UpdateHeaderStatus then
+                    LifeDashboard.Window:UpdateHeaderStatus()
+                end
+            elseif LifeDashboard.connected and LifeDashboard.Protocol then
+                LifeDashboard.Protocol:SendMessage("PING", "main", nil, tostring(math.floor(now * 1000)))
             end
         end
     end
@@ -138,6 +187,9 @@ function LifeDashboard:OnInitSavedVars()
 end
 
 function LifeDashboard:OnPlayerLogin()
+    if self.uiInitialized then return end
+    self.uiInitialized = true
+
     -- Initialize UI
     self.Window:Init()
     self.Overview:Init(self.Window.frame.ContentFrame)
@@ -152,7 +204,7 @@ function LifeDashboard:OnPlayerLogin()
         self.MinimapButton:Init()
     end
 
-    -- Baseline World Data
+    -- Clean initial world data (no mock telemetry)
     if self.Store then
         self.Store:InitWorld()
         self.Store:ScanNearbyWorld()
@@ -162,6 +214,7 @@ function LifeDashboard:OnPlayerLogin()
     self.Window:SelectTab(1)
 
     -- Initiate handshake with server
+    self.connectionState = "HELLO_SENT"
     self.Protocol:SendMessage("HELLO", "main", nil, "v=1.0.0;build=12340")
 
     DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00Playerbots Life Dashboard|r v1.0.0 loaded. Click the |cff00ccffMinimap House Icon|r or type |cff00ccff/lifedash|r to open.")
@@ -187,43 +240,102 @@ function LifeDashboard:ToggleWindow()
     end
 end
 
--- ─── Slash Commands ──────────────────────────────────────────────────────────
+function LifeDashboard:ShowWindow()
+    if not self.Window or not self.Window.frame then return end
+    self.Window.frame:Show()
+    if self.Overview and self.Window.activeTabId == 1 then
+        self.Overview:ApplyFilters()
+    end
+end
+
+function LifeDashboard:HideWindow()
+    if not self.Window or not self.Window.frame then return end
+    self.Window.frame:Hide()
+end
+
+-- ─── Slash Commands Dispatcher (DASH-10) ─────────────────────────────────────
 SLASH_PLAYERBOTSLIFEDASHBOARD1 = "/lifedash"
 SLASH_PLAYERBOTSLIFEDASHBOARD2 = "/ldash"
 
 SlashCmdList["PLAYERBOTSLIFEDASHBOARD"] = function(msg)
     msg = string.lower(strtrim(msg or ""))
-    if msg == "debug" then
-        LifeDashboard.Protocol.debugEnabled = not LifeDashboard.Protocol.debugEnabled
-        DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffaa00[LifeDashboard]|r Packet debug logging: %s",
-            LifeDashboard.Protocol.debugEnabled and "|cff00ff66ENABLED|r" or "|cffff3333DISABLED|r"))
-    elseif msg == "test" then
-        LifeDashboard.Store:InjectMockData()
+
+    if msg == "show" then
+        LifeDashboard:ShowWindow()
+
+    elseif msg == "hide" then
+        LifeDashboard:HideWindow()
+
+    elseif msg == "toggle" or msg == "" then
         LifeDashboard:ToggleWindow()
-    elseif msg == "dump" then
-        DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffaa00[LifeDashboard]|r Status: %s, Epoch: %s, Bots: %d",
-            LifeDashboard.connected and "Connected" or "World Recognition Active",
-            LifeDashboard.sessionEpoch or "None",
-            #LifeDashboard.Store.botList))
+
+    elseif msg == "config" then
+        LifeDashboard:ShowWindow()
+        LifeDashboard.Window:OpenDrawer("settings")
+
+    elseif msg == "diag" then
+        LifeDashboard:ShowWindow()
+        LifeDashboard.Window:OpenDrawer("diagnostics")
+
     elseif msg == "minimap" then
         if LifeDashboard.MinimapButton then
             LifeDashboard.MinimapButton:Toggle()
             DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00[LifeDashboard]|r Toggled minimap house icon.")
         end
+
+    elseif msg == "debug" then
+        LifeDashboard.Protocol.debugEnabled = not LifeDashboard.Protocol.debugEnabled
+        DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffaa00[LifeDashboard]|r Packet debug logging: %s",
+            LifeDashboard.Protocol.debugEnabled and "|cff00ff66ENABLED|r" or "|cffff3333DISABLED|r"))
+
+    elseif msg == "test" then
+        if LifeDashboard.Store.isMockData then
+            LifeDashboard.Store:InitWorld()
+            DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00[LifeDashboard]|r Cleared mock demonstration data.")
+        else
+            LifeDashboard.Store:InjectMockData()
+            LifeDashboard:ShowWindow()
+            DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00[LifeDashboard]|r Injected mock demonstration data [DEMO MODE]. Type /lifedash test to clear.")
+        end
+
+    elseif msg == "dump" then
+        DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffaa00[LifeDashboard]|r State: %s, Epoch: %s, Bots: %d",
+            LifeDashboard.connectionState or "UNKNOWN",
+            LifeDashboard.sessionEpoch or "None",
+            #LifeDashboard.Store.botList))
+
     elseif msg == "scan" then
         if LifeDashboard.Store then
             LifeDashboard.Store:ScanNearbyWorld()
-            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffaa00[LifeDashboard]|r Scanned nearby world. %d bots/players known.", #LifeDashboard.Store.botList))
+            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffaa00[LifeDashboard]|r Scanned nearby world. %d entities known.", #LifeDashboard.Store.botList))
         end
+
     elseif msg == "reset" then
         if LifeDashboard.Window and LifeDashboard.Window.frame then
             LifeDashboard.Window.frame:ClearAllPoints()
             LifeDashboard.Window.frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
             LifeDashboard.Window.frame:SetWidth(1020)
             LifeDashboard.Window.frame:SetHeight(680)
-            DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00[LifeDashboard]|r Window position and size reset to default.")
         end
+        if LifeDashboard.Store then
+            LifeDashboard.Store:InitWorld()
+        end
+        DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00[LifeDashboard]|r Window position, size, and store data reset.")
+
+    elseif msg == "help" then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffffaa00[Playerbots Life Dashboard Commands]|r")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash|r or |cff00ccff/ldash|r - Toggle main window")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash show|r - Show window")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash hide|r - Hide window")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash toggle|r - Toggle window")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash config|r - Open configuration drawer")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash diag|r - Open diagnostics drawer")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash minimap|r - Toggle minimap icon")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash debug|r - Toggle wire packet chat log")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash test|r - Toggle mock demo data")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash scan|r - Scan nearby units")
+        DEFAULT_CHAT_FRAME:AddMessage("  |cff00ccff/lifedash reset|r - Reset window and clear state")
     else
-        LifeDashboard:ToggleWindow()
+        DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffaa00[LifeDashboard]|r Unknown command '%s'. Type |cff00ccff/lifedash help|r for commands.", msg))
     end
 end

@@ -27,6 +27,13 @@ local L = {
     STATUS_DISCONNECTED = "Disconnected",
     STATUS_DEGRADED = "Degraded",
     STATUS_UNAVAILABLE = "Unavailable",
+    STATUS_DEMO = "DEMO MODE",
+    STATUS_LOCAL_ONLY = "Local Observations Only",
+    STATUS_STALE = "Degraded (Stale)",
+    STATUS_AWAITING_TELEMETRY = "Awaiting Server Telemetry",
+    BADGE_UNCLASSIFIED = "Observed",
+    BADGE_PLAYER = "Player",
+    BADGE_BOT = "Bot",
 
     -- Common Columns
     COL_BOT = "Bot",
