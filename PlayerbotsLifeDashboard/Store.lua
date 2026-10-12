@@ -457,8 +457,6 @@ function Store:ParseRosterRecord(line)
 
         local defaultRole = (mod == "city") and "Citizen" or ((mod == "pvp") and "Participant" or "World")
         local role = (rRole and rRole ~= "") and rRole or defaultRole
-        local zoneName = (rzone and rzone ~= "") and rzone or loc
-        local hubName = (mod == "city") and zoneName or nil
 
         local existing = self.bots[guid]
         self.bots[guid] = {
@@ -470,8 +468,6 @@ function Store:ParseRosterRecord(line)
             level = tonumber(level) or 80,
             faction = faction,
             location = loc,
-            hub = hubName,
-            zone = zoneName,
             activity = act,
             lastAction = lastAct,
             nextTask = nextT,
@@ -551,7 +547,7 @@ function Store:InjectMockData()
 
     local demoBots = {
         { guid = "0x20001", name = "Thoradin", module = "city", hub = "Stormwind", classId = 1, level = 80, faction = "alliance",
-          location = "Stormwind - Trade District", role = "Plaza Talker", activity = "PlazaSocial", lastAction = "Browsing Auctioneer", nextTask = "Visit city mailbox", dueMs = 4500, truthClass = "Deadline", status = "Active",
+          location = "Stormwind - Trade District", role = "Gate Duelist", activity = "DuelRitual", lastAction = "Approach challenger", nextTask = "Duel countdown Arbiter", dueMs = 4500, truthClass = "Deadline", status = "DuelCountdown",
           coords = { x = -8912.4, y = 541.2, z = 93.1, zone = "Stormwind City" } },
         { guid = "0x20002", name = "Jaina", module = "city", hub = "Stormwind", classId = 8, level = 80, faction = "alliance",
           location = "Stormwind - Cathedral Square", role = "Plaza Socializer", activity = "ScriptedChat", lastAction = "Emote Bow", nextTask = "Deliver greeting dialogue", dueMs = 12000, truthClass = "Conditional", status = "Active",
@@ -566,7 +562,7 @@ function Store:InjectMockData()
           location = "Stormwind - The Canals", role = "Dock Fisher", activity = "FishAtDocks", lastAction = "Fishing Channel", nextTask = "Catch fish bobber", dueMs = 6000, truthClass = "Deadline", status = "Fishing",
           coords = { x = -8720.5, y = 620.3, z = 92.4, zone = "Stormwind City" } },
         { guid = "0x20011", name = "Grommash", module = "city", hub = "Orgrimmar", classId = 1, level = 80, faction = "horde",
-          location = "Orgrimmar - Valley of Strength", role = "Merchant Visitor", activity = "WanderDistrict", lastAction = "Patrolling Alley", nextTask = "Visit trade merchant", dueMs = 3200, truthClass = "Deadline", status = "Active",
+          location = "Orgrimmar - Valley of Strength", role = "Gate Duelist", activity = "DuelRitual", lastAction = "Approach duel ring", nextTask = "Cast duel challenge 7266", dueMs = 3200, truthClass = "Deadline", status = "Active",
           coords = { x = 1620.5, y = -4410.2, z = 16.2, zone = "Orgrimmar" } },
         { guid = "0x20012", name = "Nazgrel", module = "city", hub = "Orgrimmar", classId = 3, level = 80, faction = "horde",
           location = "Orgrimmar - Valley of Honor", role = "Dock Fisher", activity = "FishAtDocks", lastAction = "Fishing Channel", nextTask = "Catch fish bobber", dueMs = 7500, truthClass = "Deadline", status = "Fishing",
