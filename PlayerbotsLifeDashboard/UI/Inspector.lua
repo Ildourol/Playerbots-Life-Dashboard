@@ -323,7 +323,9 @@ function Inspector:DisplayBot(guid)
         end
     elseif bot.truthSource == "demo" then
         if bot.module == "city" then
-            stratText = string.format("Role: %s (Mock Demonstration)\nNonCombat: +stay,+rpg,-follow\nCombat: +duel,+defend", bot.role or "Citizen")
+            stratText = string.format("Role: %s (Mock Demonstration)\nNonCombat: +stay,+rpg,-follow\nCombat: +defend", bot.role or "Citizen")
+        elseif bot.role == "Gate Duelist" then
+            stratText = string.format("Role: Gate Duelist (Mock Demonstration)\nNonCombat: +duel,+stay,-follow,-passive,-rpg\nCombat: +duel,+pvp,+boost", bot.role)
         else
             stratText = string.format("Zone: %s (Mock Demonstration)\nCombat: +pvp,+boost,+dps\nNonCombat: +stay,-grind", bot.zone or "PvP Zone")
         end
