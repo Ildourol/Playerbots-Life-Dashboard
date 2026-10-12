@@ -81,6 +81,18 @@ function Store:ToggleWatchlist(guid)
     return PlayerbotsLifeDashboardDB.watchlist[guid]
 end
 
+function Store:RequestRefresh()
+    if LifeDashboard.Protocol then
+        LifeDashboard.Protocol:SendMessage("SUBSCRIBE", "main", nil, "refresh")
+    end
+    self:ScanNearbyWorld()
+    self:RebuildBotList()
+    self:Notify("ON_ROSTER_UPDATED")
+    if LifeDashboard.Window and LifeDashboard.Window.UpdateHeaderStatus then
+        LifeDashboard.Window:UpdateHeaderStatus()
+    end
+end
+
 -- ─── Clean Initial State (DASH-01: Zero Mock Data By Default) ────────────────
 function Store:InitWorld()
     self.cityHubList = {}
@@ -246,6 +258,11 @@ function Store:HandleMessage(kind, stream, reqId, session, payload)
             LifeDashboard.Clock:Synchronize(GetTime(), tonumber(serverMono) or 0, tonumber(serverWall) or 0)
         end
 
+        -- Automatically subscribe to live telemetry stream on connect
+        if LifeDashboard.Protocol then
+            LifeDashboard.Protocol:SendMessage("SUBSCRIBE", "main", nil, "init")
+        end
+
         self:Notify("ON_CONNECTED")
         if LifeDashboard.Window and LifeDashboard.Window.UpdateHeaderStatus then
             LifeDashboard.Window:UpdateHeaderStatus()
@@ -305,6 +322,63 @@ function Store:HandleMessage(kind, stream, reqId, session, payload)
         self:RebuildBotList()
         self:Notify("ON_ROSTER_UPDATED")
 
+    elseif kind == "HUBS" then
+        self.cityHubList = {}
+        for line in string.gmatch(payload, "[^\r\n]+") do
+            local hubId, hName, target, active, pending, poiCount, timeMult =
+                string.match(line, "^(%d+)|([^|]+)|(%d+)|(%d+)|(%d+)|(%d+)|([%d%.]+)")
+            if hubId and hName then
+                table.insert(self.cityHubList, {
+                    hubId = tonumber(hubId),
+                    name = hName,
+                    target = tonumber(target) or 0,
+                    active = tonumber(active) or 0,
+                    pending = tonumber(pending) or 0,
+                    poiCount = tonumber(poiCount) or 0,
+                    timeMult = tonumber(timeMult) or 1.0,
+                })
+            end
+        end
+        self:Notify("ON_HUBS_UPDATED", self.cityHubList)
+
+    elseif kind == "ZONES" then
+        self.pvpZoneList = {}
+        for line in string.gmatch(payload, "[^\r\n]+") do
+            local zoneId, zName, actType, minL, maxL, aAll, aHorde, cd =
+                string.match(line, "^(%d+)|([^|]+)|([^|]+)|(%d+)|(%d+)|(%d+)|(%d+)|(%d+)")
+            if zoneId and zName then
+                table.insert(self.pvpZoneList, {
+                    zoneId = tonumber(zoneId),
+                    name = zName,
+                    activityType = actType,
+                    minLevel = tonumber(minL) or 20,
+                    maxLevel = tonumber(maxL) or 80,
+                    activeAlliance = tonumber(aAll) or 0,
+                    activeHorde = tonumber(aHorde) or 0,
+                    cooldownSec = tonumber(cd) or 0,
+                })
+            end
+        end
+        self:Notify("ON_ZONES_UPDATED", self.pvpZoneList)
+
+    elseif kind == "QUEUES" then
+        self.workQueues = {}
+        for line in string.gmatch(payload, "[^\r\n]+") do
+            local taskId, q, botName, tType, due, truth =
+                string.match(line, "^(%d+)|([^|]+)|([^|]+)|([^|]+)|([-%d]+)|([^|]+)")
+            if taskId and q then
+                table.insert(self.workQueues, {
+                    taskId = tonumber(taskId),
+                    queue = q,
+                    botName = botName,
+                    taskType = tType,
+                    dueMs = tonumber(due) or 0,
+                    truthClass = truth or "Queued",
+                })
+            end
+        end
+        self:Notify("ON_QUEUES_UPDATED", self.workQueues)
+
     elseif kind == "DELTA" then
         self:ParseRosterRecord(payload)
         self:RebuildBotList()
@@ -330,6 +404,24 @@ function Store:HandleMessage(kind, stream, reqId, session, payload)
             self:Notify("ON_ALERT_ADDED", self.alerts[1])
         end
 
+    elseif kind == "BOT_DETAIL" then
+        local guid, role, action, targetName, targetHp, spellName, strategies, lastAction =
+            string.match(payload, "^([^|]+)|([^|]+)|([^|]+)|([^|]+)|(%d+)|([^|]+)|([^|]+)|?(.*)")
+        if guid and self.bots[guid] then
+            local b = self.bots[guid]
+            if role and role ~= "" and role ~= "None" then b.role = role end
+            if action and action ~= "" and action ~= "None" then b.lastAction = action end
+            b.detail = {
+                targetName = targetName,
+                targetHp = tonumber(targetHp) or 100,
+                spellName = spellName,
+                strategies = strategies,
+                lastAction = lastAction,
+                updatedAt = GetTime(),
+            }
+            self:Notify("ON_BOT_DETAIL_UPDATED", guid, b.detail)
+        end
+
     elseif kind == "CONFIG" then
         -- Optional live effective server configuration key-value
         local k, val = string.match(payload, "^([^=]+)=(.*)$")
@@ -340,10 +432,17 @@ function Store:HandleMessage(kind, stream, reqId, session, payload)
     end
 end
 
+function Store:QueryBotDetail(guid)
+    if not guid then return end
+    if LifeDashboard.Protocol then
+        LifeDashboard.Protocol:SendMessage("QUERY_BOT", "main", nil, guid)
+    end
+end
+
 function Store:ParseRosterRecord(line)
-    -- Format: guid|name|module|classId|level|faction|location|activity|lastAction|nextTask|dueMs|truthClass|status[|x|y|z|zone]
-    local guid, name, mod, classId, level, faction, loc, act, lastAct, nextT, dueMs, truth, stat, rx, ry, rz, rzone =
-        string.match(line, "^([^|]+)|([^|]+)|([^|]+)|(%d+)|(%d+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([-%d]+)|([^|]+)|([^|]+)|?([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)")
+    -- Format: guid|name|module|classId|level|faction|location|activity|lastAction|nextTask|dueMs|truthClass|status[|x|y|z|zone|role]
+    local guid, name, mod, classId, level, faction, loc, act, lastAct, nextT, dueMs, truth, stat, rx, ry, rz, rzone, rRole =
+        string.match(line, "^([^|]+)|([^|]+)|([^|]+)|(%d+)|(%d+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([-%d]+)|([^|]+)|([^|]+)|?([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)")
 
     if guid and name then
         local coords = nil
@@ -356,10 +455,15 @@ function Store:ParseRosterRecord(line)
             }
         end
 
+        local defaultRole = (mod == "city") and "Citizen" or ((mod == "pvp") and "Participant" or "World")
+        local role = (rRole and rRole ~= "") and rRole or defaultRole
+
+        local existing = self.bots[guid]
         self.bots[guid] = {
             guid = guid,
             name = name,
             module = mod,
+            role = role,
             classId = tonumber(classId) or 1,
             level = tonumber(level) or 80,
             faction = faction,
@@ -377,6 +481,7 @@ function Store:ParseRosterRecord(line)
             isBot = true,
             generation = self.snapshotGeneration,
             updatedAt = GetTime(),
+            detail = existing and existing.detail or nil,
         }
     end
 end

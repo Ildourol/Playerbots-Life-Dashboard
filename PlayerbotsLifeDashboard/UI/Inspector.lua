@@ -215,6 +215,13 @@ function Inspector:Init(parent)
     hintFs:SetPoint("LEFT", whisperBtn, "RIGHT", 8, 0)
     hintFs:SetText("Target uses secure action.")
     d.HintFs = hintFs
+
+    -- Register live terminal bot detail listener
+    LifeDashboard.Store:RegisterListener("ON_BOT_DETAIL_UPDATED", function(updatedGuid, detail)
+        if Inspector.currentGuid == updatedGuid and Inspector.drawer and Inspector.drawer:IsShown() then
+            Inspector:DisplayBot(updatedGuid)
+        end
+    end, "INSPECTOR_BOT_DETAIL")
 end
 
 function Inspector:OnLeaveCombat()
@@ -261,6 +268,14 @@ function Inspector:DisplayBot(guid)
     local isWatched = LifeDashboard.Store:IsWatchlisted(guid)
     local star = isWatched and "|cffffd700★ |r" or ""
 
+    -- Query fresh bot detail from server terminal if authoritative and not queried recently
+    local now = GetTime()
+    if bot.truthSource == "server-authoritative" and LifeDashboard.Store and LifeDashboard.Store.QueryBotDetail then
+        if not bot.detail or (now - (bot.detail.updatedAt or 0) > 3) then
+            LifeDashboard.Store:QueryBotDetail(guid)
+        end
+    end
+
     -- DASH-06: Accurate entity type badge
     local typeBadge
     if bot.truthSource == "server-authoritative" or bot.isBot then
@@ -298,15 +313,17 @@ function Inspector:DisplayBot(guid)
 
     -- DASH-07: Transparent AI Strategies
     local stratText
-    if bot.truthSource == "server-authoritative" then
+    if bot.detail and bot.detail.strategies and bot.detail.strategies ~= "" and bot.detail.strategies ~= "None" then
+        stratText = string.format("|cff00ff66Active Strategies:|r\n%s", bot.detail.strategies)
+    elseif bot.truthSource == "server-authoritative" then
         if bot.strategies then
             stratText = bot.strategies
         else
-            stratText = "Strategies: Managed by server PlayerbotAI.\n(Roster telemetry does not report raw strategy string)"
+            stratText = "Strategies: Querying server terminal..."
         end
     elseif bot.truthSource == "demo" then
         if bot.module == "city" then
-            stratText = string.format("Role: %s (Mock Demonstration)\nNonCombat: +stay,+rpg,-follow\nCombat: +duel,+defend", bot.role or "Flex")
+            stratText = string.format("Role: %s (Mock Demonstration)\nNonCombat: +stay,+rpg,-follow\nCombat: +duel,+defend", bot.role or "Citizen")
         else
             stratText = string.format("Zone: %s (Mock Demonstration)\nCombat: +pvp,+boost,+dps\nNonCombat: +stay,-grind", bot.zone or "PvP Zone")
         end
@@ -336,7 +353,20 @@ function Inspector:DisplayBot(guid)
         end
     end
 
-    -- Rebuild Timeline Text
+    -- Rebuild Timeline & Live Action Text
+    local detailHeader = {}
+    if bot.detail then
+        if bot.detail.targetName and bot.detail.targetName ~= "" and bot.detail.targetName ~= "None" then
+            table.insert(detailHeader, string.format("|cffffcc00Target:|r %s (%d%% HP)", bot.detail.targetName, bot.detail.targetHp or 100))
+        end
+        if bot.detail.spellName and bot.detail.spellName ~= "" and bot.detail.spellName ~= "None" then
+            table.insert(detailHeader, string.format("|cff33ccffCasting:|r %s", bot.detail.spellName))
+        end
+        if bot.detail.lastAction and bot.detail.lastAction ~= "" and bot.detail.lastAction ~= "None" then
+            table.insert(detailHeader, string.format("|cffaaaaaaAI Action:|r %s", bot.detail.lastAction))
+        end
+    end
+
     local timeline = (LifeDashboard.Timeline and LifeDashboard.Timeline.GetBotTimeline) and LifeDashboard.Timeline:GetBotTimeline(guid) or {}
     local lines = {}
     for i, item in ipairs(timeline) do
@@ -344,16 +374,18 @@ function Inspector:DisplayBot(guid)
         local due = LifeDashboard.Clock and LifeDashboard.Clock:FormatDueTime(item.dueMs, item.truthClass) or tostring(item.dueMs)
         table.insert(lines, string.format("%d. %s %s\n   |cffaaaaaaDue: %s (%s)|r", i, badge, item.title, due, item.source))
     end
+
+    local headerStr = #detailHeader > 0 and (table.concat(detailHeader, "\n") .. "\n\n") or ""
     if #lines == 0 then
         if bot.lastAction or bot.nextTask then
-            d.TimelineDetails:SetText(string.format("Current Action:\n  %s\n\nNext Task:\n  %s\n\nDue in: %s",
+            d.TimelineDetails:SetText(headerStr .. string.format("Current Action:\n  %s\n\nNext Task:\n  %s\n\nDue in: %s",
                 bot.lastAction or "None",
                 bot.nextTask or "None",
                 LifeDashboard.Clock:FormatDueTime(bot.dueMs or 0, bot.truthClass or "Observed")))
         else
-            d.TimelineDetails:SetText("No queued or observed tasks recorded.")
+            d.TimelineDetails:SetText(headerStr .. "No queued or observed tasks recorded.")
         end
     else
-        d.TimelineDetails:SetText(table.concat(lines, "\n\n"))
+        d.TimelineDetails:SetText(headerStr .. table.concat(lines, "\n\n"))
     end
 end

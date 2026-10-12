@@ -61,8 +61,20 @@ function Overview:Init(parent)
     searchBox:SetPoint("LEFT", filterBar, "LEFT", 0, 0)
     pane.SearchBox = searchBox
 
-    -- Filter Buttons: ALL, BOTS, PLAYERS, CITY, PVP, WATCHLIST
+    -- Filter Buttons: ALL, BOTS, PLAYERS, CITY, PVP, WATCHLIST, REFRESH
     pane.selectedModuleFilter = "ALL"
+    local filterButtons = {}
+
+    local function UpdateFilterButtonStyles()
+        for mod, btn in pairs(filterButtons) do
+            if pane.selectedModuleFilter == mod then
+                btn:LockHighlight()
+            else
+                btn:UnlockHighlight()
+            end
+        end
+    end
+
     local btnAll = CreateFrame("Button", nil, filterBar, "UIPanelButtonTemplate")
     btnAll:SetWidth(45)
     btnAll:SetHeight(22)
@@ -70,8 +82,10 @@ function Overview:Init(parent)
     btnAll:SetText("All")
     btnAll:SetScript("OnClick", function()
         pane.selectedModuleFilter = "ALL"
+        UpdateFilterButtonStyles()
         Overview:ApplyFilters()
     end)
+    filterButtons["ALL"] = btnAll
 
     local btnBots = CreateFrame("Button", nil, filterBar, "UIPanelButtonTemplate")
     btnBots:SetWidth(55)
@@ -80,8 +94,10 @@ function Overview:Init(parent)
     btnBots:SetText("Bots")
     btnBots:SetScript("OnClick", function()
         pane.selectedModuleFilter = "BOTS"
+        UpdateFilterButtonStyles()
         Overview:ApplyFilters()
     end)
+    filterButtons["BOTS"] = btnBots
 
     local btnPlayers = CreateFrame("Button", nil, filterBar, "UIPanelButtonTemplate")
     btnPlayers:SetWidth(65)
@@ -90,8 +106,10 @@ function Overview:Init(parent)
     btnPlayers:SetText("Players")
     btnPlayers:SetScript("OnClick", function()
         pane.selectedModuleFilter = "PLAYERS"
+        UpdateFilterButtonStyles()
         Overview:ApplyFilters()
     end)
+    filterButtons["PLAYERS"] = btnPlayers
 
     local btnCity = CreateFrame("Button", nil, filterBar, "UIPanelButtonTemplate")
     btnCity:SetWidth(70)
@@ -100,8 +118,10 @@ function Overview:Init(parent)
     btnCity:SetText("City Life")
     btnCity:SetScript("OnClick", function()
         pane.selectedModuleFilter = "city"
+        UpdateFilterButtonStyles()
         Overview:ApplyFilters()
     end)
+    filterButtons["city"] = btnCity
 
     local btnPvP = CreateFrame("Button", nil, filterBar, "UIPanelButtonTemplate")
     btnPvP:SetWidth(70)
@@ -110,8 +130,10 @@ function Overview:Init(parent)
     btnPvP:SetText("PvP Life")
     btnPvP:SetScript("OnClick", function()
         pane.selectedModuleFilter = "pvp"
+        UpdateFilterButtonStyles()
         Overview:ApplyFilters()
     end)
+    filterButtons["pvp"] = btnPvP
 
     local btnWatch = CreateFrame("Button", nil, filterBar, "UIPanelButtonTemplate")
     btnWatch:SetWidth(85)
@@ -120,8 +142,12 @@ function Overview:Init(parent)
     btnWatch:SetText("|cffffd700★ Watch|r")
     btnWatch:SetScript("OnClick", function()
         pane.selectedModuleFilter = "WATCHLIST"
+        UpdateFilterButtonStyles()
         Overview:ApplyFilters()
     end)
+    filterButtons["WATCHLIST"] = btnWatch
+
+    UpdateFilterButtonStyles()
 
     -- ─── Virtualized Master Bot Table ───────────────────────────────────────────
     local columns = {

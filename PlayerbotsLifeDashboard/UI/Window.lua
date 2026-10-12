@@ -84,6 +84,24 @@ function Window:Init()
     inspBtn:RegisterForClicks("LeftButtonUp")
     inspBtn:SetScript("OnClick", function() Window:ToggleDrawer("inspector") end)
 
+    local topRefreshBtn = CreateFrame("Button", "PlayerbotsLifeDashboardTopRefreshBtn", f, "UIPanelButtonTemplate")
+    topRefreshBtn:SetWidth(80)
+    topRefreshBtn:SetHeight(22)
+    topRefreshBtn:SetPoint("RIGHT", inspBtn, "LEFT", -6, 0)
+    topRefreshBtn:SetFrameLevel(f:GetFrameLevel() + 10)
+    topRefreshBtn:SetText(LifeDashboard.L and LifeDashboard.L.BTN_REFRESH or "Refresh")
+    topRefreshBtn:RegisterForClicks("LeftButtonUp")
+    topRefreshBtn:SetScript("OnClick", function()
+        if LifeDashboard.Store and LifeDashboard.Store.RequestRefresh then
+            LifeDashboard.Store:RequestRefresh()
+        elseif LifeDashboard.Protocol then
+            LifeDashboard.Protocol:SendMessage("SUBSCRIBE", "main", nil, "refresh")
+        end
+        if f.StatusBadge then
+            f.StatusBadge:SetText("|cff00ff00[Refreshing...]|r")
+        end
+    end)
+
     -- ─── Tab Bar (EXACTLY 3 PRIMARY TABS) ────────────────────────────────────────
     local tabContainer = CreateFrame("Frame", nil, f)
     tabContainer:SetWidth(f:GetWidth() - 20)
@@ -129,17 +147,6 @@ function Window:Init()
     footerText:SetPoint("LEFT", footer, "LEFT", 4, 0)
     footerText:SetText("Protocol: LIFE335 v1 | Client: 3.3.5a (12340)")
     f.FooterText = footerText
-
-    local refreshBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
-    refreshBtn:SetWidth(75)
-    refreshBtn:SetHeight(20)
-    refreshBtn:SetPoint("RIGHT", footer, "RIGHT", -20, 0)
-    refreshBtn:SetText(LifeDashboard.L and LifeDashboard.L.BTN_REFRESH or "Refresh")
-    refreshBtn:SetScript("OnClick", function()
-        if LifeDashboard.Protocol then
-            LifeDashboard.Protocol:SendMessage("SUBSCRIBE", "main", nil, "refresh")
-        end
-    end)
 
     -- Window Resize Handle
     local resizeGrip = CreateFrame("Button", nil, f)
