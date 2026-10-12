@@ -32,6 +32,7 @@ local KNOWN_INBOUND_KINDS = {
     ["PONG"] = true,
     ["DENIED"] = true,
     ["CONFIG"] = true,
+    ["BOT_DETAIL"] = true,
 }
 
 -- ─── CRC32 Implementation (Pure Lua 5.1) ─────────────────────────────────────
