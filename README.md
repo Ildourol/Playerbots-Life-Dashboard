@@ -8,8 +8,8 @@
 
 ### 1. Three Core Management Tabs
 - **Overview:** Combined server health and population dashboard displaying total bot capacity, active City Life and PvP Life quotas, real-time activity feeds, and cross-module alerts. Includes multi-criteria search and quick-filter buttons for `All`, `Bots`, `Players`, `City Life`, `PvP Life`, and `★ Watchlist`.
-- **City Life:** Deep inspection of urban hubs (Stormwind, Orgrimmar, Ironforge, Undercity, Darnassus, Dalaran, etc.), resident counts, POI assignments, citizen roles (*Plaza Socializer*, *Civic Wanderer*, *Wall Patroller*, *Dock Fisher*, *Inn Dancer*, *Tavern Patron*), and active civic routines.
-- **PvP Life:** Real-time visibility into world PvP hotspots (Gurubashi Arena, Capital Gates, Dark Portal, Wintergrasp), skirmishes, faction campaigns, capital gate duel arenas (*Gate Duelist*), server work queues (*Move*, *Engage*, *Duel*, *Chat*), and reactive defense forces.
+- **City Life:** Deep inspection of urban hubs (Stormwind, Orgrimmar, Ironforge, Undercity, Dalaran, etc.), resident counts, POI assignments, citizen roles (*Gate Duelist*, *Plaza Socializer*, *Wall Patroller*, *Dock Fisher*, *Inn Dancer*), and active routines.
+- **PvP Life:** Real-time visibility into world PvP hotspots (Gurubashi Arena, Capital Gates, Dark Portal, Wintergrasp), skirmishes, faction campaigns, server work queues (*Move*, *Engage*, *Duel*, *Chat*), and reactive defense forces.
 
 ### 2. Autonomous Bot Monitoring & Player Distinction
 - **Clear Badges:** Autonomous bots are distinguished with `[Bot]` / `[B]` badges, while scanned real players are badged with `[Player]` / `[P]`. Real players scanned from the world or party/raid never overwrite or conceal autonomous playerbots.
