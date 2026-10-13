@@ -97,6 +97,7 @@ function Window:Init()
         elseif LifeDashboard.Protocol then
             LifeDashboard.Protocol:SendMessage("SUBSCRIBE", "main", nil, "refresh")
         end
+        f.refreshTimer = 1.0
         if f.StatusBadge then
             f.StatusBadge:SetText("|cff00ff00[Refreshing...]|r")
         end
@@ -158,6 +159,16 @@ function Window:Init()
     resizeGrip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
     resizeGrip:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
     resizeGrip:SetScript("OnMouseUp", function() f:StopMovingOrSizing() end)
+
+    f:SetScript("OnUpdate", function(selfFrame, elapsed)
+        if selfFrame.refreshTimer then
+            selfFrame.refreshTimer = selfFrame.refreshTimer - elapsed
+            if selfFrame.refreshTimer <= 0 then
+                selfFrame.refreshTimer = nil
+                Window:UpdateHeaderStatus()
+            end
+        end
+    end)
 
     self.frame = f
 

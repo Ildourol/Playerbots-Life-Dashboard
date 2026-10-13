@@ -183,12 +183,12 @@ function Inspector:Init(parent)
     pinBtn:SetWidth(95)
     pinBtn:SetHeight(22)
     pinBtn:SetPoint("LEFT", findBtn, "RIGHT", 6, 0)
-    pinBtn:SetText("Pin ★")
+    pinBtn:SetText("Pin *")
     pinBtn:SetScript("OnClick", function()
         local guid = Inspector.currentGuid
         if guid and LifeDashboard.Store then
             local isPinned = LifeDashboard.Store:ToggleWatchlist(guid)
-            pinBtn:SetText(isPinned and "|cffffd700★ Pinned|r" or "Pin ★")
+            pinBtn:SetText(isPinned and "|cffffd700* Pinned|r" or "Pin *")
             if Inspector.drawer and Inspector.drawer:IsShown() then
                 Inspector:DisplayBot(guid)
             end
@@ -253,7 +253,7 @@ function Inspector:DisplayBot(guid)
         d.LeaseDetails:SetText("Lease State: None\nModule Owner: None\nReservation Expiry: N/A")
         d.StratDetails:SetText("Strategies: None")
         d.TimelineDetails:SetText("No queued or observed tasks recorded.")
-        d.PinBtn:SetText("Pin ★")
+        d.PinBtn:SetText("Pin *")
 
         if not InCombatLockdown() then
             d.TargetBtn:SetAttribute("macrotext", "")
@@ -266,7 +266,7 @@ function Inspector:DisplayBot(guid)
     end
 
     local isWatched = LifeDashboard.Store:IsWatchlisted(guid)
-    local star = isWatched and "|cffffd700★ |r" or ""
+    local star = isWatched and "|cffffd700* |r" or ""
 
     -- Query fresh bot detail from server terminal if authoritative and not queried recently
     local now = GetTime()
@@ -333,7 +333,7 @@ function Inspector:DisplayBot(guid)
     d.StratDetails:SetText(stratText)
 
     -- Pin button text
-    d.PinBtn:SetText(isWatched and "|cffffd700★ Pinned|r" or "Pin ★")
+    d.PinBtn:SetText(isWatched and "|cffffd700* Pinned|r" or "Pin *")
 
     -- DASH-08: Secure Target macro combat handling
     local safeName = string.match(bot.name, "^([%w%s%-_]+)$")

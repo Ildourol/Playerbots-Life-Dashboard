@@ -107,7 +107,7 @@ function PvPLife:Init(parent)
 
     local partTable = LifeDashboard.Widgets:CreateVirtualizedTable(partPanel, 580, 200, 24, partCols, function(row, item)
         local isWatched = LifeDashboard.Store and LifeDashboard.Store:IsWatchlisted(item.guid)
-        local star = isWatched and "|cffffd700★ |r" or ""
+        local star = isWatched and "|cffffd700* |r" or ""
         row.cells[1]:SetText(star .. item.name)
         if item.faction == "alliance" then
             row.cells[2]:SetText("|cff0070ddAlliance|r")
@@ -160,18 +160,14 @@ function PvPLife:UpdateData()
     if not pane then return end
 
     local zones = LifeDashboard.Store.pvpZoneList or {}
-    if #zones == 0 and pane.ZoneTitle then
-        pane.ZoneTitle:SetText("PvP Hotspots (Awaiting Server Telemetry)")
-    elseif pane.ZoneTitle then
-        pane.ZoneTitle:SetText("PvP Life Hotspots & Skirmishes")
+    if pane.ZoneTitle then
+        pane.ZoneTitle:SetText(string.format("PvP Life Hotspots & Skirmishes (%d Hotspots)", #zones))
     end
     pane.ZoneTable:SetData(zones)
 
     local queues = LifeDashboard.Store.workQueues or {}
-    if #queues == 0 and pane.QueueTitle then
-        pane.QueueTitle:SetText("Server Work Queues (Awaiting Telemetry)")
-    elseif pane.QueueTitle then
-        pane.QueueTitle:SetText("Server Work Queues (Move, Engage, Duel, Chat)")
+    if pane.QueueTitle then
+        pane.QueueTitle:SetText(string.format("Server Work Queues (%d Tasks)", #queues))
     end
     pane.QueueTable:SetData(queues)
 
@@ -205,9 +201,7 @@ function PvPLife:UpdateParticipants()
     pane.PartTable:SetData(filtered)
 
     if pane.PartTitle then
-        if #filtered == 0 and not LifeDashboard.Store.hasServerCapacity and not LifeDashboard.isMockData then
-            pane.PartTitle:SetText("Zone Participants (Awaiting Server Telemetry)")
-        elseif sel then
+        if sel then
             pane.PartTitle:SetText(string.format("Zone Participants: %s (%d bots)", sel, #filtered))
         else
             pane.PartTitle:SetText(string.format("Zone Participants: All Zones (%d bots)", #filtered))

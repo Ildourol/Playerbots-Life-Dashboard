@@ -71,7 +71,7 @@ function CityLife:Init(parent)
 
     local resTable = LifeDashboard.Widgets:CreateVirtualizedTable(resPanel, 610, 430, 26, resCols, function(row, item)
         local isWatched = LifeDashboard.Store and LifeDashboard.Store:IsWatchlisted(item.guid)
-        local star = isWatched and "|cffffd700★ |r" or ""
+        local star = isWatched and "|cffffd700* |r" or ""
         row.cells[1]:SetText(star .. item.name)
         row.cells[2]:SetText(item.role or "Citizen")
         row.cells[3]:SetText(item.activity or "")
@@ -116,10 +116,8 @@ function CityLife:UpdateData()
     if not pane then return end
 
     local hubs = LifeDashboard.Store.cityHubList or {}
-    if #hubs == 0 and pane.HubTitle then
-        pane.HubTitle:SetText("City Life Hubs (Awaiting Server Telemetry)")
-    elseif pane.HubTitle then
-        pane.HubTitle:SetText("City Life Hubs & Districts")
+    if pane.HubTitle then
+        pane.HubTitle:SetText(string.format("City Life Hubs & Districts (%d Hubs)", #hubs))
     end
     pane.HubTable:SetData(hubs)
 
@@ -146,9 +144,7 @@ function CityLife:UpdateResidents()
 
     if pane.ResTitle then
         local titleStr
-        if #filtered == 0 and not LifeDashboard.Store.hasServerCapacity and not LifeDashboard.isMockData then
-            titleStr = "Active Residents (Awaiting Server Telemetry)"
-        elseif sel then
+        if sel then
             titleStr = "Active Residents: " .. sel .. " (" .. #filtered .. " bots)"
         else
             titleStr = "All Active City Residents (" .. #filtered .. " bots)"
